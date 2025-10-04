@@ -18,7 +18,7 @@ jobs:
             # unduh dan konfigurasi ngrok
             wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
             unzip ngrok-stable-linux-amd64.zip -d ~/
-            ~/ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+            ~/ngrok config add-authtoken 2Eo0NchYuHlLibUx3U36MEyej5f_4L9DDM6UYb89EQixawBU7
 
       - run:
           name: Jalankan XRDP manual (tanpa systemd)
