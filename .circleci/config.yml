@@ -1,0 +1,57 @@
+version: 2.1
+
+jobs:
+  run-xrdp-cloudflare:
+    docker:
+      - image: cimg/base:stable
+    resource_class: medium
+    steps:
+      - checkout
+
+      - run:
+          name: Install XRDP + Desktop ringan (XFCE)
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y xrdp xfce4 wget
+
+            # aktifkan xrdp
+            sudo systemctl enable xrdp
+            sudo service xrdp start
+
+            # set user & password login XRDP
+            echo "circleci:circleci" | sudo chpasswd
+
+      - run:
+          name: Install cloudflared (tunnel client)
+          command: |
+            wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+            sudo dpkg -i cloudflared-linux-amd64.deb
+
+      - run:
+          name: Jalankan Cloudflare tunnel ke XRDP port 3389
+          background: true
+          command: |
+            cloudflared tunnel --url tcp://localhost:3389 > tunnel.log 2>&1 &
+
+      - run:
+          name: Tunggu Cloudflare aktif dan tampilkan URL
+          command: |
+            echo "Menunggu tunnel aktif..."
+            sleep 10
+            cat tunnel.log | grep -E "tcp://.*trycloudflare.com" || cat tunnel.log
+
+      - run:
+          name: Menjaga job tetap hidup
+          command: |
+            echo "✅ XRDP aktif di port 3389 via Cloudflare Tunnel."
+            echo "🌐 Lihat URL di atas (trycloudflare.com)."
+            echo "Silakan hubungkan dengan Remote Desktop Client (user: circleci / pass: circleci)."
+            echo "CTRL+C tidak akan bekerja di CircleCI UI, tekan Cancel di CircleCI dashboard untuk menghentikan."
+            # jaga agar container tetap hidup (1 jam)
+            sleep 9999999999999
+
+workflows:
+  version: 2
+  run:
+    jobs:
+      - run-xrdp-cloudflare
