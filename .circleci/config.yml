@@ -23,16 +23,17 @@ jobs:
             cloudflared --version
 
       - run:
-          name: Start XRDP daemon manual (tanpa systemd)
+          name: Start XRDP manually (tanpa systemd)
           background: true
           command: |
             sudo /usr/sbin/xrdp-sesman &
-            sudo /usr/sbin/xrdp --nodaemon & 
+            sudo /usr/sbin/xrdp --nodaemon &
             sleep 5
             sudo netstat -tlnp | grep 3389 || echo "⚠️ Port 3389 belum listening"
 
       - run:
-          name: Jalankan Cloudflare Tunnel & tampilkan URL
+          name: Jalankan Cloudflare Tunnel
+          background: true
           command: |
             echo "Menunggu XRDP siap..."
             for i in {1..10}; do
@@ -43,23 +44,29 @@ jobs:
               sleep 2
             done
             echo "🚀 Menjalankan Cloudflare tunnel..."
-            # Jalankan hingga selesai (di foreground), biar output langsung kelihatan di log CircleCI
-            cloudflared tunnel --url tcp://localhost:3389 --loglevel info &
-            # Tunggu sampai alamat publik muncul
-            for i in {1..40}; do
-              line=$(grep -E "trycloudflare.com" <<< "$(sudo pkill -0 cloudflared >/dev/null 2>&1 || true; ps aux | grep -m1 cloudflared; sleep 1; echo)")
-              if test -n "$line"; then
+            cloudflared tunnel --url tcp://localhost:3389 --loglevel info | tee /tmp/tunnel.log
+
+      - run:
+          name: Tampilkan URL publik Cloudflare
+          command: |
+            echo "Menunggu tunnel aktif..."
+            for i in {1..30}; do
+              if grep -E "trycloudflare.com" /tmp/tunnel.log; then
+                echo "✅ Tunnel publik ditemukan:"
+                grep -E "tcp://.*trycloudflare.com" /tmp/tunnel.log
                 break
               fi
-              grep -E "trycloudflare.com" cloudflared-output.log 2>/dev/null && break
-              sleep 2
+              echo "⏳ Belum muncul... tunggu 5 detik lagi."
+              sleep 5
             done
+            echo "📜 Log akhir:"
+            tail -n 20 /tmp/tunnel.log || true
 
       - run:
           name: Keepalive job
           command: |
-            echo "✅ XRDP & Cloudflare aktif. Gunakan URL di log yang menampilkan 'trycloudflare.com'"
-            echo "User: circleci | Password: circleci"
+            echo "✅ XRDP & Cloudflare aktif."
+            echo "Gunakan URL di atas pada Remote Desktop Client (user: circleci / password: circleci)"
             while true; do
               echo "[KEEPALIVE] XRDP aktif - $(date)"
               sleep 300
