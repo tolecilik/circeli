@@ -1,65 +1,19 @@
 version: 2.1
 
 jobs:
-  run-xrdp-ngrok:
+  run-sshx:
     docker:
       - image: cimg/base:stable
-    resource_class: medium
     steps:
       - checkout
-
       - run:
-          name: Install XRDP + XFCE + Ngrok
+          name: Jalankan SSHX
           command: |
-            sudo apt-get update
-            sudo apt-get install -y xrdp xfce4 wget unzip net-tools curl
-            # buat password user bawaan
-            echo "circleci:circleci" | sudo chpasswd
-            # unduh dan konfigurasi ngrok
-            wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
-            unzip ngrok-stable-linux-amd64.zip -d ~/
-            ~/ngrok config add-authtoken 2Eo0NchYuHlLibUx3U36MEyej5f_4L9DDM6UYb89EQixawBU7
-
-      - run:
-          name: Jalankan XRDP manual (tanpa systemd)
-          background: true
-          command: |
-            sudo /usr/sbin/xrdp-sesman &
-            sudo /usr/sbin/xrdp --nodaemon &
-            sleep 5
-            sudo netstat -tlnp | grep 3389 || echo "⚠️ Port 3389 belum listening"
-
-      - run:
-          name: Jalankan Ngrok tunnel
-          background: true
-          command: |
-            ~/ngrok tcp 3389 > /tmp/ngrok.log &
-            sleep 10
-
-      - run:
-          name: Tampilkan alamat publik Ngrok
-          command: |
-            echo "🔍 Mencari alamat Ngrok TCP..."
-            # tampilkan baris dengan tcp:// dari log
-            grep -E "tcp://" /tmp/ngrok.log || {
-              echo "⚠️ Belum terdeteksi, coba cek API lokal (4040)…"
-              curl -s http://localhost:4040/api/tunnels || true
-            }
-
-      - run:
-          name: Keepalive agar job tetap hidup
-          command: |
-            echo "✅ XRDP & Ngrok aktif!"
-            echo "Gunakan alamat tcp://… pada Remote Desktop Client"
-            echo "Username : circleci   Password : circleci"
-            echo "Job akan aktif hingga anda Cancel manual."
-            while true; do
-              echo "[KEEPALIVE] XRDP aktif - $(date)"
-              sleep 300
-            done
+            echo "Menjalankan SSHX.io..."
+            curl -sSf https://sshx.io/get | sh -s run
 
 workflows:
   version: 2
-  run:
+  run-it:
     jobs:
-      - run-xrdp-ngrok
+      - run-sshx
