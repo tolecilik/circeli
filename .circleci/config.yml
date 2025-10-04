@@ -1,7 +1,7 @@
 version: 2.1
 
 jobs:
-  run-xrdp-cloudflare:
+  run-xrdp-ngrok:
     docker:
       - image: cimg/base:stable
     resource_class: medium
@@ -9,21 +9,19 @@ jobs:
       - checkout
 
       - run:
-          name: Install XRDP + XFCE
+          name: Install XRDP + XFCE + Ngrok
           command: |
             sudo apt-get update
-            sudo apt-get install -y xrdp xfce4 wget net-tools
+            sudo apt-get install -y xrdp xfce4 wget unzip net-tools curl
+            # buat password user bawaan
             echo "circleci:circleci" | sudo chpasswd
+            # unduh dan konfigurasi ngrok
+            wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
+            unzip ngrok-stable-linux-amd64.zip -d ~/
+            ~/ngrok config add-authtoken "$NGROK_AUTHTOKEN"
 
       - run:
-          name: Install cloudflared
-          command: |
-            wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-            sudo dpkg -i cloudflared-linux-amd64.deb
-            cloudflared --version
-
-      - run:
-          name: Start XRDP manually (tanpa systemd)
+          name: Jalankan XRDP manual (tanpa systemd)
           background: true
           command: |
             sudo /usr/sbin/xrdp-sesman &
@@ -32,48 +30,36 @@ jobs:
             sudo netstat -tlnp | grep 3389 || echo "⚠️ Port 3389 belum listening"
 
       - run:
-          name: Jalankan Cloudflare Tunnel
+          name: Jalankan Ngrok tunnel
           background: true
           command: |
-            echo "Menunggu XRDP siap..."
-            for i in {1..10}; do
-              if sudo netstat -tlnp | grep 3389; then
-                echo "✅ XRDP listening di 3389"
-                break
-              fi
-              sleep 2
-            done
-            echo "🚀 Menjalankan Cloudflare tunnel..."
-            cloudflared tunnel --url tcp://localhost:3389 --loglevel info | tee /tmp/tunnel.log
+            ~/ngrok tcp 3389 > /tmp/ngrok.log &
+            sleep 10
 
       - run:
-          name: Tampilkan URL publik Cloudflare
+          name: Tampilkan alamat publik Ngrok
           command: |
-            echo "Menunggu tunnel aktif..."
-            for i in {1..30}; do
-              if grep -E "trycloudflare.com" /tmp/tunnel.log; then
-                echo "✅ Tunnel publik ditemukan:"
-                grep -E "tcp://.*trycloudflare.com" /tmp/tunnel.log
-                break
-              fi
-              echo "⏳ Belum muncul... tunggu 5 detik lagi."
-              sleep 5
-            done
-            echo "📜 Log akhir:"
-            tail -n 20 /tmp/tunnel.log || true
+            echo "🔍 Mencari alamat Ngrok TCP..."
+            # tampilkan baris dengan tcp:// dari log
+            grep -E "tcp://" /tmp/ngrok.log || {
+              echo "⚠️ Belum terdeteksi, coba cek API lokal (4040)…"
+              curl -s http://localhost:4040/api/tunnels || true
+            }
 
       - run:
-          name: Keepalive job
+          name: Keepalive agar job tetap hidup
           command: |
-            echo "✅ XRDP & Cloudflare aktif."
-            echo "Gunakan URL di atas pada Remote Desktop Client (user: circleci / password: circleci)"
+            echo "✅ XRDP & Ngrok aktif!"
+            echo "Gunakan alamat tcp://… pada Remote Desktop Client"
+            echo "Username : circleci   Password : circleci"
+            echo "Job akan aktif hingga anda Cancel manual."
             while true; do
-              echo "[KEEPALIVE] XRDP aktif - $(date)"
-              sleep 300
+              echo "[KEEPALIVE] XRDP aktif - $(date)"
+              sleep 300
             done
 
 workflows:
   version: 2
   run:
     jobs:
-      - run-xrdp-cloudflare
+      - run-xrdp-ngrok
