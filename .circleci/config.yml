@@ -5,36 +5,52 @@ jobs:
     docker:
       - image: cimg/base:stable
     resource_class: medium
+
     steps:
       - checkout
 
       - run:
-          name: Instalasi XRDP + XFCE
+          name: Instal XRDP dan Desktop XFCE
           command: |
             sudo apt-get update
-            sudo apt-get install -y xrdp xfce4 wget
-            # aktifkan service XRDP
-            sudo systemctl enable xrdp
-            sudo service xrdp start
-            # buat password login
+            sudo apt-get install -y xrdp xfce4 wget net-tools
             echo "circleci:circleci" | sudo chpasswd
 
       - run:
-          name: Instalasi Cloudflared
+          name: Instalasi cloudflared
           command: |
             wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
             sudo dpkg -i cloudflared-linux-amd64.deb
             cloudflared --version
 
       - run:
-          name: Jalankan Cloudflare Tunnel (latar belakang)
+          name: Jalankan XRDP manual (tanpa systemd)
           background: true
           command: |
-            # Pipe log ke file DAN tampilkan ke console
+            # Start XRDP service directly, without systemd
+            sudo /usr/sbin/xrdp-sesman &
+            sudo /usr/sbin/xrdp --nodaemon &
+            sleep 5
+            echo "Periksa apakah port 3389 menyala:"
+            sudo netstat -tlnp | grep 3389 || echo "⚠️ XRDP belum listening!"
+
+      - run:
+          name: Jalankan Cloudflare Tunnel
+          background: true
+          command: |
+            echo "Menunggu hingga XRDP siap..."
+            for i in {1..10}; do
+              if sudo netstat -tlnp | grep 3389; then
+                echo "✅ XRDP ready!"
+                break
+              fi
+              sleep 2
+            done
+            # Jalankan cloudflared dan log output
             cloudflared tunnel --url tcp://localhost:3389 --loglevel info | tee tunnel.log
 
       - run:
-          name: Tampilkan URL Publik Cloudflare Tunnel
+          name: Tampilkan URL Publik Cloudflare
           command: |
             echo "Menunggu tunnel aktif..."
             for i in {1..20}; do
@@ -43,22 +59,22 @@ jobs:
                 grep -E "tcp://.*trycloudflare.com" tunnel.log
                 break
               fi
-              echo "⏳ Belum muncul... tunggu 5 detik lagi."
+              echo "⏳ Belum muncul... tunggu 5 detik lagi."
               sleep 5
             done
-            echo "📜 Log tunnel (debug):"
-            cat tunnel.log | tail -n 20
+            echo "📜 Log akhir:"
+            tail -n 20 tunnel.log
 
       - run:
-          name: Jaga XRDP dan Tunnel tetap aktif
+          name: Keep‑alive agar pipeline tidak sleep
           command: |
-            echo "✅ XRDP via Cloudflare aktif."
-            echo "🌐 Gunakan URL di atas pada Remote Desktop Client (user: circleci / pass: circleci)."
-            echo "🕒 Container ini akan bertahan hingga kamu cancel job di dashboard."
-            # Loop abadi + heartbeat agar tidak idle timeout
+            echo "✅ XRDP & Cloudflare Tunnel aktif."
+            echo "🌐 Gunakan alamat tcp://...trycloudflare.com yang tercetak di atas di Remote Desktop Client."
+            echo "  User: circleci  Password: circleci"
+            echo "🕓 Lingkungan ini bertahan hingga kamu Cancel job di CircleCI Dashboard."
             while true; do
-              echo "[KEEPALIVE] XRDP aktif - $(date)"
-              sleep 99999999
+              echo "[KEEPALIVE] XRDP masih aktif - $(date)"
+              sleep 9999999
             done
 
 workflows:
